@@ -1,0 +1,34 @@
+# ==========================================================================
+# OptiQual3D — Phase 1: Pre-training Configuration
+# ==========================================================================
+# Overrides for masked autoencoder self-supervised pre-training on ShapeNet.
+# Merged on top of default.yaml by scripts/pretrain.py.
+
+data:
+  shapenet_dir: datasets/ShapeNetCore
+  point_cloud:
+    num_points: 1024
+    num_patches: 64
+    patch_size: 32
+  num_workers: 8
+
+model:
+  encoder:
+    mask_ratio: 0.6
+
+training:
+  pretrain:
+    epochs: 300
+    batch_size: 128
+    optimizer:
+      lr: 0.001
+      weight_decay: 0.05
+    scheduler:
+      warmup_epochs: 20
+      min_lr: 0.00001
+    checkpoint_interval: 25
+    log_interval: 50
+
+logging:
+  log_dir: outputs/pretrain
+  use_wandb: false

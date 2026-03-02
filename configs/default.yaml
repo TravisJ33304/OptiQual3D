@@ -1,0 +1,68 @@
+# ==========================================================================
+# OptiQual3D — Default Configuration
+# ==========================================================================
+# Mirrors the dataclass hierarchy in optiqual3d/config/settings.py.
+# Override individual fields in phase-specific configs or via CLI.
+
+data:
+  shapenet_dir: datasets/ShapeNetCore
+  mvtec3d_dir: datasets/mvtec_3d_anomaly_detection
+  real3d_dir: datasets/Real3D-AD
+  anomaly_shapenet_dir: datasets/anomaly_shapenet
+  generated_dir: datasets/generated
+  num_workers: 8
+  point_cloud:
+    num_points: 1024
+    patch_size: 32
+    num_patches: 64
+    normalize: true
+  augmentation:
+    enable: true
+    rotation_range: 180.0
+    scale_min: 0.8
+    scale_max: 1.2
+    jitter_sigma: 0.01
+    jitter_clip: 0.05
+    dropout_ratio: 0.1
+  anomaly_generation:
+    severity_min: 0.1
+    severity_max: 0.8
+
+model:
+  encoder:
+    embed_dim: 384
+    depth: 12
+    num_heads: 6
+    mask_ratio: 0.6
+  decoder:
+    embed_dim: 192
+    depth: 4
+
+training:
+  seed: 42
+  mixed_precision: true
+  gradient_clip: 1.0
+  pretrain:
+    epochs: 300
+    batch_size: 128
+    optimizer:
+      lr: 0.001
+      weight_decay: 0.05
+    scheduler:
+      warmup_epochs: 20
+      min_lr: 0.00001
+  anomaly:
+    epochs: 150
+    batch_size: 64
+    freeze_encoder: true
+    unfreeze_epoch: 10
+    optimizer:
+      lr: 0.0005
+      weight_decay: 0.01
+    scheduler:
+      warmup_epochs: 5
+      min_lr: 0.000005
+
+logging:
+  log_dir: logs
+  use_wandb: false

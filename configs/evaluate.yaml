@@ -1,0 +1,18 @@
+# ==========================================================================
+# OptiQual3D — Evaluation Configuration
+# ==========================================================================
+# Settings for zero-shot benchmark evaluation on MVTec 3D-AD / Real3D-AD.
+
+data:
+  batch_size: 16
+  num_workers: 4
+
+evaluation:
+  threshold: 0.5
+  fpr_limit: 0.3
+  k_neighbours: 5
+
+visualization:
+  backend: matplotlib      # static images for paper figures
+  colormap: hot
+  point_size: 2.0

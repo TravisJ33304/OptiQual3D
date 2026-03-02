@@ -1,0 +1,32 @@
+# ==========================================================================
+# OptiQual3D — Phase 2: Anomaly Detection Training Configuration
+# ==========================================================================
+# Fine-tunes the anomaly head and contrastive module on generated data.
+# Merged on top of default.yaml by scripts/train.py.
+
+data:
+  shapenet_dir: datasets/ShapeNetCore
+  point_cloud:
+    num_points: 1024
+    num_patches: 64
+    patch_size: 32
+  num_workers: 8
+
+training:
+  anomaly:
+    epochs: 150
+    batch_size: 64
+    freeze_encoder: true
+    unfreeze_epoch: 10
+    optimizer:
+      lr: 0.0005
+      weight_decay: 0.01
+    scheduler:
+      warmup_epochs: 5
+      min_lr: 0.000005
+    checkpoint_interval: 10
+    log_interval: 50
+
+logging:
+  log_dir: outputs/train
+  use_wandb: false

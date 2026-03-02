@@ -205,3 +205,21 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ==========================================================================
+# OptiQual3D project-specific
+# ==========================================================================
+
+# Large dataset files
+/datasets/
+
+# Training outputs
+outputs/
+logs/
+
+# Wandb
+wandb/
+
+# Checkpoint files
+*.pt
+*.pth

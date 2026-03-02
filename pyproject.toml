@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "optiqual3d"
+version = "0.1.0"
+description = "Cross-Category Zero-Shot 3D Anomaly Detection on Point Clouds"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "OptiQual3D Team"},
+]
+keywords = ["3d", "anomaly-detection", "point-cloud", "zero-shot", "manufacturing"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "numpy>=1.26.0",
+    "open3d>=0.18.0",
+    "scipy>=1.12.0",
+    "scikit-learn>=1.4.0",
+    "trimesh>=4.0.0",
+    "pyyaml>=6.0",
+    "tqdm>=4.66.0",
+    "wandb>=0.16.0",
+    "matplotlib>=3.8.0",
+    "plotly>=5.18.0",
+    "einops>=0.7.0",
+    "timm>=0.9.0",
+    "h5py>=3.10.0",
+    "omegaconf>=2.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+    "pre-commit>=3.6.0",
+]
+
+[project.scripts]
+optiqual-generate = "scripts.generate_data:main"
+optiqual-pretrain = "scripts.pretrain:main"
+optiqual-train = "scripts.train:main"
+optiqual-evaluate = "scripts.evaluate:main"
+optiqual-demo = "scripts.demo:main"
+
+[tool.setuptools.packages.find]
+include = ["optiqual3d*", "scripts*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "ANN", "D"]
+ignore = ["ANN101", "ANN102", "D100", "D104"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --cov=optiqual3d"

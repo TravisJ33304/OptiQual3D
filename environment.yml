@@ -1,0 +1,39 @@
+name: optiqual3d
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  # Python
+  - python=3.10
+
+  # PyTorch with CUDA 12.x for H100 GPUs
+  - pytorch>=2.2.0
+  - torchvision>=0.17.0
+  - pytorch-cuda=12.1
+
+  # Core scientific stack
+  - numpy>=1.26.0
+  - scipy>=1.12.0
+  - scikit-learn>=1.4.0
+  - h5py>=3.10.0
+
+  # Visualization
+  - matplotlib>=3.8.0
+  - plotly>=5.18.0
+
+  # Utilities
+  - pyyaml>=6.0
+  - tqdm>=4.66.0
+
+  # Pip-only packages
+  - pip
+  - pip:
+      - open3d>=0.18.0
+      - trimesh>=4.0.0
+      - wandb>=0.16.0
+      - einops>=0.7.0
+      - timm>=0.9.0
+      - omegaconf>=2.3.0
+      - -e .  # Install project in editable mode
