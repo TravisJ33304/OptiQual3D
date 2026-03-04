@@ -83,11 +83,11 @@ class NormalityPrototype(nn.Module):
         batch_mean = F.normalize(projected.mean(dim=0), dim=0)
 
         if not self.initialised:
-            self.prototype.copy_(batch_mean)
-            self.initialised.fill_(True)
+            self.prototype.data.copy_(batch_mean)
+            self.initialised.data.fill_(True)
         else:
             m = self.config.momentum
-            self.prototype.copy_(
+            self.prototype.data.copy_(
                 F.normalize(m * self.prototype + (1 - m) * batch_mean, dim=0)
             )
 
@@ -101,7 +101,7 @@ class NormalityPrototype(nn.Module):
             ``(B,)`` similarity scores in ``[-1, 1]``.
         """
         projected = self.project(features)
-        return torch.sum(projected * self.prototype.unsqueeze(0), dim=-1)
+        return torch.sum(projected * self.prototype.detach().unsqueeze(0), dim=-1)
 
 
 class ContrastiveNormalityModule(nn.Module):

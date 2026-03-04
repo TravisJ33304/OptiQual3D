@@ -178,9 +178,9 @@ class Evaluator:
         pred = raw_model.predict(patches_tensor, centroids_tensor, points)
 
         return {
-            "labels": labels.numpy().tolist(),
+            "labels": labels.cpu().numpy().tolist(),
             "global_scores": pred["global_score"].cpu().numpy().tolist(),
-            "point_masks": [m.numpy() for m in masks],
+            "point_masks": [m.cpu().numpy() for m in masks],
             "point_scores": [
                 pred["point_scores"][i].cpu().numpy() for i in range(b)
             ],
