@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=oq3d-eval
-#SBATCH --partition=teaching
+#SBATCH --partition=dgx
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=1

@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=oq3d-train
-#SBATCH --partition=teaching
+#SBATCH --partition=dgx
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=4
-#SBATCH --gpus-per-node=4
-#SBATCH --cpus-per-task=8
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-node=8
+#SBATCH --cpus-per-task=32
 #SBATCH --mem=256G
 #SBATCH --time=48:00:00
 #SBATCH --output=logs/train_%j.out
@@ -45,7 +45,7 @@ NGPUS=${SLURM_GPUS_ON_NODE:-4}
 PRETRAINED=${1:-outputs/pretrain/best.pt}
 
 # -- Launch -------------------------------------------------------------------
-srun torchrun \
+srun python -m torch.distributed.run \
     --nnodes=1 \
     --nproc_per_node="${NGPUS}" \
     --rdzv_id="${SLURM_JOB_ID}" \

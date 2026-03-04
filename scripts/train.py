@@ -87,7 +87,7 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parse_args(argv)
 
-    rank, world_size, _ = setup_distributed()
+    rank, local_rank, world_size = setup_distributed()
     setup_logging(rank=rank)
 
     logger.info("Phase 2 – Anomaly Detection Training")
@@ -121,7 +121,7 @@ def main(argv: list[str] | None = None) -> None:
     from optiqual3d.models.optiqual import OptiQual3D
     from optiqual3d.training.train_anomaly import AnomalyTrainer
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
 
     cfg.logging.log_dir = str(output_dir)
 
@@ -165,7 +165,7 @@ def main(argv: list[str] | None = None) -> None:
         logger.info("Loaded pre-trained weights from %s", args.pretrained)
 
     if world_size > 1:
-        model = DDP(model, device_ids=[rank])
+        model = DDP(model, device_ids=[local_rank], find_unused_parameters=True)
 
     # ---- Resume Phase 2 -----------------------------------------
     if args.resume:

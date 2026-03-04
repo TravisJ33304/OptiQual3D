@@ -78,7 +78,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
 
     # Distributed setup (no-op when launched without torchrun)
-    rank, world_size, _ = setup_distributed()
+    rank, local_rank, world_size = setup_distributed()
     setup_logging(rank=rank)
 
     logger.info("Phase 1 - Pre-training")
@@ -108,7 +108,7 @@ def main(argv: list[str] | None = None) -> None:
     from optiqual3d.models.optiqual import OptiQual3D
     from optiqual3d.training.pretrain import PreTrainer
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
 
     # Point checkpoints at the requested output dir
     cfg.logging.log_dir = str(output_dir)
@@ -146,6 +146,7 @@ def main(argv: list[str] | None = None) -> None:
         shuffle=(sampler is None),
         num_workers=cfg.data.num_workers,
         pin_memory=True,
+        persistent_workers=(cfg.data.num_workers > 0),
         collate_fn=patch_collate,
         drop_last=True,
     )
@@ -156,7 +157,7 @@ def main(argv: list[str] | None = None) -> None:
     ).to(device)
 
     if world_size > 1:
-        model = DDP(model, device_ids=[rank])
+        model = DDP(model, device_ids=[local_rank], find_unused_parameters=True)
 
     # ---- Resume -------------------------------------------------
     if args.resume:
