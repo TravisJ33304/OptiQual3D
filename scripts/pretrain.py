@@ -160,14 +160,24 @@ def main(argv: list[str] | None = None) -> None:
         model = DDP(model, device_ids=[local_rank], find_unused_parameters=True)
 
     # ---- Resume -------------------------------------------------
+    trainer = PreTrainer(model=model, train_loader=loader, cfg=cfg, device=device)
+
     if args.resume:
-        ckpt = torch.load(args.resume, map_location=device)
+        ckpt = torch.load(args.resume, map_location=device, weights_only=False)
         raw = model.module if world_size > 1 else model
         raw.load_state_dict(ckpt["model_state_dict"])
-        logger.info("Resumed from %s (epoch %s)", args.resume, ckpt.get("epoch", "?"))
+        if "optimizer_state_dict" in ckpt:
+            trainer.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+        if "scheduler_state_dict" in ckpt:
+            trainer.scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+        trainer.current_epoch = ckpt.get("current_epoch", ckpt.get("epoch", 0))
+        trainer.global_step = ckpt.get("global_step", 0)
+        logger.info(
+            "Resumed from %s (epoch %d, step %d)",
+            args.resume, trainer.current_epoch, trainer.global_step,
+        )
 
     # ---- Train --------------------------------------------------
-    trainer = PreTrainer(model=model, train_loader=loader, cfg=cfg, device=device)
     trainer.train()
 
     if world_size > 1:

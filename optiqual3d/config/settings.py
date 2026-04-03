@@ -206,11 +206,15 @@ class AnomalyHeadConfig:
         hidden_dims: Hidden layer sizes for the MLP head.
         dropout: Dropout rate between layers.
         use_multi_scale: Whether to aggregate multi-scale features.
+        multi_scale_layers: 0-based encoder block indices to tap for
+            multi-scale feature extraction.  Defaults to layers 3, 7, 11
+            (early, middle, final) for a 12-layer encoder.
     """
 
     hidden_dims: list[int] = field(default_factory=lambda: [256, 128])
     dropout: float = 0.1
     use_multi_scale: bool = True
+    multi_scale_layers: list[int] = field(default_factory=lambda: [3, 7, 11])
 
 
 @dataclass
@@ -457,16 +461,16 @@ class LoggingConfig:
 
     Attributes:
         log_dir: Directory for local logs and checkpoints.
-        use_wandb: Whether to log to Weights & Biases.
-        wandb_project: W&B project name.
-        wandb_entity: W&B team/user entity.
+        use_mlflow: Whether to log to MLflow.
+        mlflow_tracking_uri: MLflow tracking server URI.
+        mlflow_experiment_name: MLflow experiment name.
         log_level: Python logging level.
     """
 
     log_dir: str = "logs"
-    use_wandb: bool = True
-    wandb_project: str = "optiqual3d"
-    wandb_entity: str | None = None
+    use_mlflow: bool = True
+    mlflow_tracking_uri: str = "mlruns"
+    mlflow_experiment_name: str = "optiqual3d"
     log_level: str = "INFO"
 
 

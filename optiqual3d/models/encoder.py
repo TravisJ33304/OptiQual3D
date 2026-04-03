@@ -296,7 +296,8 @@ class PointMAEEncoder(nn.Module):
         patches: torch.Tensor,
         centroids: torch.Tensor,
         mask: Optional[torch.Tensor] = None,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        return_intermediates: Optional[list[int]] = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None, list[torch.Tensor] | None]:
         """Encode point cloud patches.
 
         Args:
@@ -304,11 +305,16 @@ class PointMAEEncoder(nn.Module):
             centroids: ``(B, G, 3)`` patch centroids.
             mask: ``(B, G)`` boolean mask (``True`` = masked/hidden).
                 If ``None``, all patches are processed.
+            return_intermediates: Optional list of 0-based block indices
+                whose outputs should be captured and returned for
+                multi-scale feature aggregation.
 
         Returns:
             Tuple of:
                 - ``(B, G_vis, D)`` encoded visible patch features.
                 - ``(B, G)`` mask tensor (``None`` if no masking).
+                - List of ``(B, G_vis, D)`` intermediate features at the
+                  requested layers, or ``None`` if not requested.
         """
         # Embed patches → (B, G, D)
         tokens = self.patch_embed(patches, centroids)
@@ -322,12 +328,20 @@ class PointMAEEncoder(nn.Module):
         else:
             visible = tokens
 
-        # Transformer encoding
-        for block in self.blocks:
+        # Transformer encoding with optional intermediate capture
+        intermediates: list[torch.Tensor] | None = None
+        if return_intermediates is not None:
+            intermediates = []
+            capture_set = set(return_intermediates)
+
+        for idx, block in enumerate(self.blocks):
             visible = block(visible)
+            if intermediates is not None and idx in capture_set:
+                intermediates.append(visible)
+
         visible = self.norm(visible)
 
-        return visible, mask
+        return visible, mask, intermediates
 
     def generate_mask(
         self,

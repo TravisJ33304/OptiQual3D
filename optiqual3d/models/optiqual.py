@@ -19,7 +19,7 @@ from optiqual3d.models.anomaly_head import (
     interpolate_scores_to_points,
 )
 from optiqual3d.models.contrastive import ContrastiveNormalityModule
-from optiqual3d.models.decoder import DualBranchDecoder
+from optiqual3d.models.decoder import AnomalyFeatureDecoder, DualBranchDecoder
 from optiqual3d.models.encoder import PointMAEEncoder
 
 
@@ -75,12 +75,24 @@ class OptiQual3D(nn.Module):
 
         # Anomaly detection head
         if self.model_cfg.anomaly_head.use_multi_scale:
-            # Use features from multiple encoder layers
+            # Tap intermediate encoder layers for multi-scale features
+            self.multi_scale_layers = self.model_cfg.anomaly_head.multi_scale_layers
+            # One anomaly decoder per scale
+            self.scale_decoders = nn.ModuleList([
+                AnomalyFeatureDecoder(
+                    encoder_dim=self.encoder.embed_dim,
+                    config=self.model_cfg.decoder,
+                )
+                for _ in self.multi_scale_layers
+            ])
+            scale_dim = self.model_cfg.decoder.embed_dim
             self.anomaly_head: nn.Module = MultiScaleAnomalyHead(
-                in_dims=[self.decoder.anomaly_feature_dim],
+                in_dims=[scale_dim] * len(self.multi_scale_layers),
                 config=self.model_cfg.anomaly_head,
             )
         else:
+            self.multi_scale_layers = []
+            self.scale_decoders = nn.ModuleList()
             self.anomaly_head = AnomalyDetectionHead(
                 in_dim=self.decoder.anomaly_feature_dim,
                 config=self.model_cfg.anomaly_head,
@@ -127,7 +139,7 @@ class OptiQual3D(nn.Module):
         mask = self.encoder.generate_mask(b, g, patches.device)
 
         # Encode visible patches only
-        visible_tokens, _ = self.encoder(patches, centroids, mask=mask)
+        visible_tokens, _, _ = self.encoder(patches, centroids, mask=mask)
 
         # Decode to reconstruct masked patches
         decoder_out = self.decoder(
@@ -174,24 +186,32 @@ class OptiQual3D(nn.Module):
         """
         b, g, p, _ = patches.shape
 
-        # Encode all patches (no masking)
-        all_tokens, _ = self.encoder(patches, centroids, mask=None)
-
-        # Anomaly decoder branch
-        decoder_out = self.decoder(
-            visible_tokens=all_tokens,
-            all_tokens=all_tokens,
-            centroids=centroids,
-            mask=None,
-            mode="anomaly",
+        # Encode all patches (no masking), optionally returning intermediates
+        intermediates_indices = self.multi_scale_layers if self.multi_scale_layers else None
+        all_tokens, _, intermediates = self.encoder(
+            patches, centroids, mask=None,
+            return_intermediates=intermediates_indices,
         )
 
-        anomaly_features = decoder_out["anomaly_features"]
-
         # Anomaly scoring
-        if isinstance(self.anomaly_head, MultiScaleAnomalyHead):
-            patch_scores = self.anomaly_head([anomaly_features])
+        if isinstance(self.anomaly_head, MultiScaleAnomalyHead) and intermediates:
+            # Process each intermediate through its own anomaly decoder
+            multi_scale_features = [
+                decoder(inter, centroids)
+                for decoder, inter in zip(self.scale_decoders, intermediates)
+            ]
+            patch_scores = self.anomaly_head(multi_scale_features)
+            anomaly_features = multi_scale_features[-1]  # use deepest for output
         else:
+            # Fallback: single-scale via the dual-branch decoder
+            decoder_out = self.decoder(
+                visible_tokens=all_tokens,
+                all_tokens=all_tokens,
+                centroids=centroids,
+                mask=None,
+                mode="anomaly",
+            )
+            anomaly_features = decoder_out["anomaly_features"]
             patch_scores = self.anomaly_head(anomaly_features)
 
         # Global features for contrastive learning

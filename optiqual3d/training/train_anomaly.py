@@ -84,8 +84,12 @@ class AnomalyTrainer:
         self.loss_fn = AnomalyDetectionLoss(self.train_cfg.loss)
 
         # Metrics
-        self.train_metrics = MetricTracker()
-        self.val_metrics = MetricTracker()
+        self.train_metrics = MetricTracker(
+            mlflow_enabled=(cfg.logging.use_mlflow and is_main_process()),
+        )
+        self.val_metrics = MetricTracker(
+            mlflow_enabled=(cfg.logging.use_mlflow and is_main_process()),
+        )
 
         # State
         self.current_epoch = 0
@@ -105,6 +109,24 @@ class AnomalyTrainer:
 
     def train(self) -> None:
         """Run the full anomaly detection training loop."""
+        # Start MLflow run if enabled
+        if self.cfg.logging.use_mlflow and is_main_process():
+            import mlflow
+            mlflow.set_tracking_uri(self.cfg.logging.mlflow_tracking_uri)
+            mlflow.set_experiment(self.cfg.logging.mlflow_experiment_name)
+            mlflow.start_run(run_name="anomaly_train")
+            mlflow.log_params({
+                "phase": "anomaly",
+                "epochs": self.train_cfg.epochs,
+                "batch_size": self.train_cfg.batch_size,
+                "lr": self.train_cfg.optimizer.lr,
+                "freeze_encoder": self.train_cfg.freeze_encoder,
+                "unfreeze_epoch": self.train_cfg.unfreeze_epoch,
+                "lambda_reconstruction": self.train_cfg.loss.lambda_reconstruction,
+                "lambda_contrastive": self.train_cfg.loss.lambda_contrastive,
+                "lambda_anomaly": self.train_cfg.loss.lambda_anomaly,
+            })
+
         logger.info(
             "Starting anomaly training for %d epochs", self.train_cfg.epochs
         )
@@ -166,6 +188,10 @@ class AnomalyTrainer:
         # Final checkpoint
         if is_main_process():
             self._save_checkpoint(self.train_cfg.epochs, tag="final")
+
+            if self.cfg.logging.use_mlflow:
+                import mlflow
+                mlflow.end_run()
 
     def train_epoch(self) -> dict[str, float]:
         """Train for a single epoch.

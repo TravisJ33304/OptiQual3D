@@ -1,8 +1,7 @@
 """Logging and metric tracking utilities.
 
 Provides :class:`MetricTracker` for accumulating per-epoch statistics
-and optional `wandb <https://wandb.ai>`_ integration for experiment
-tracking on Rosie HPC.
+and optional MLflow integration for experiment tracking on Rosie HPC.
 """
 
 from __future__ import annotations
@@ -38,14 +37,14 @@ class MetricTracker:
         tracker.reset()
 
     Args:
-        wandb_run: An optional ``wandb.Run`` object for remote logging.
+        mlflow_enabled: Whether to log metrics to MLflow.
     """
 
-    def __init__(self, wandb_run: Any | None = None) -> None:
+    def __init__(self, mlflow_enabled: bool = False) -> None:
         self._sums: dict[str, float] = defaultdict(float)
         self._counts: dict[str, int] = defaultdict(int)
         self._history: dict[str, list[float]] = defaultdict(list)
-        self._wandb = wandb_run
+        self._mlflow = mlflow_enabled
         self._step: int = 0
 
     # -- mutators --
@@ -55,15 +54,15 @@ class MetricTracker:
         metrics: dict[str, float],
         *,
         step: int | None = None,
-        log_wandb: bool = True,
+        log_mlflow: bool = True,
     ) -> None:
         """Record a set of metric values.
 
         Args:
             metrics: Mapping of metric name to scalar value.
-            step: Global step (for wandb logging). Defaults to internal
+            step: Global step (for MLflow logging). Defaults to internal
                 counter.
-            log_wandb: Whether to push these values to wandb.
+            log_mlflow: Whether to push these values to MLflow.
         """
         global_step = step if step is not None else self._step
         for name, value in metrics.items():
@@ -71,8 +70,12 @@ class MetricTracker:
             self._counts[name] += 1
             self._history[name].append(value)
 
-        if self._wandb is not None and log_wandb:
-            self._wandb.log(metrics, step=global_step)
+        if self._mlflow and log_mlflow:
+            try:
+                import mlflow
+                mlflow.log_metrics(metrics, step=global_step)
+            except Exception:
+                pass
 
         self._step += 1
 

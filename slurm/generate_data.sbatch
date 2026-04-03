@@ -32,8 +32,7 @@ echo "Start time:    $(date)"
 echo "=========================================="
 
 # -- Environment setup -------------------------------------------------------
-source /usr/local/miniforge/miniforge3/etc/profile.d/conda.sh
-conda activate optiqual3d
+export PATH="/home/ad.msoe.edu/jankowskitb/.conda/envs/optiqual3d/bin:$PATH"
 
 mkdir -p logs datasets/generated
 

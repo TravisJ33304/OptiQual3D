@@ -17,6 +17,37 @@ import torch.nn as nn
 logger = logging.getLogger(__name__)
 
 
+def _strip_module_prefix(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    """Return a copy of *state_dict* with optional DDP ``module.`` prefixes removed."""
+    return {k.removeprefix("module."): v for k, v in state_dict.items()}
+
+
+def _filter_compatible_state_dict(
+    model: nn.Module,
+    state_dict: dict[str, torch.Tensor],
+) -> tuple[dict[str, torch.Tensor], list[str], list[str]]:
+    """Keep only checkpoint tensors that exist in model and have matching shape.
+
+    Returns:
+        Tuple of ``(filtered_state_dict, missing_in_model, shape_mismatch)``.
+    """
+    target = model.state_dict()
+    filtered: dict[str, torch.Tensor] = {}
+    missing_in_model: list[str] = []
+    shape_mismatch: list[str] = []
+
+    for key, value in state_dict.items():
+        if key not in target:
+            missing_in_model.append(key)
+            continue
+        if target[key].shape != value.shape:
+            shape_mismatch.append(key)
+            continue
+        filtered[key] = value
+
+    return filtered, missing_in_model, shape_mismatch
+
+
 def save_checkpoint(
     model: nn.Module,
     optimizer: torch.optim.Optimizer,
@@ -110,17 +141,39 @@ def load_checkpoint(
 
     checkpoint: dict[str, Any] = torch.load(path, map_location=device, weights_only=False)
 
-    # Handle DDP-wrapped models: try loading directly, fall back to
-    # stripping the ``module.`` prefix.
+    # Handle DDP-wrapped models and architecture drift between checkpoints.
     state_dict = checkpoint["model_state_dict"]
-    try:
-        model.load_state_dict(state_dict, strict=strict)
-    except RuntimeError:
-        # Strip 'module.' prefix if the model was saved under DDP
-        cleaned = {
-            k.removeprefix("module."): v for k, v in state_dict.items()
-        }
-        model.load_state_dict(cleaned, strict=strict)
+    cleaned = _strip_module_prefix(state_dict)
+
+    if strict:
+        model.load_state_dict(cleaned, strict=True)
+    else:
+        filtered, missing_in_model, shape_mismatch = _filter_compatible_state_dict(
+            model,
+            cleaned,
+        )
+        load_result = model.load_state_dict(filtered, strict=False)
+
+        if missing_in_model:
+            logger.warning(
+                "Checkpoint has %d key(s) not present in model; skipped.",
+                len(missing_in_model),
+            )
+        if shape_mismatch:
+            logger.warning(
+                "Checkpoint has %d key(s) with shape mismatch; skipped.",
+                len(shape_mismatch),
+            )
+        if load_result.missing_keys:
+            logger.warning(
+                "Model has %d missing key(s) after non-strict load.",
+                len(load_result.missing_keys),
+            )
+        if load_result.unexpected_keys:
+            logger.warning(
+                "Checkpoint has %d unexpected key(s) after non-strict load.",
+                len(load_result.unexpected_keys),
+            )
 
     if optimizer is not None and "optimizer_state_dict" in checkpoint:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

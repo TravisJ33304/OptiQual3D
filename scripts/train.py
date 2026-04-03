@@ -8,12 +8,12 @@ Usage::
 
     # Single GPU
     optiqual-train --config configs/train.yaml \\
-        --pretrained outputs/pretrain/best.pt
+        --pretrained outputs/pretrain/checkpoints/pretrain_latest.pt
 
     # Multi-GPU via torchrun
     torchrun --nproc_per_node=4 -m scripts.train \\
         --config configs/train.yaml \\
-        --pretrained outputs/pretrain/best.pt
+        --pretrained outputs/pretrain/checkpoints/pretrain_latest.pt
 """
 
 from __future__ import annotations
@@ -118,8 +118,10 @@ def main(argv: list[str] | None = None) -> None:
     from optiqual3d.data.augmentation import build_augmentation
     from optiqual3d.data.datasets.generated import GeneratedAnomalyDataset
     from optiqual3d.data.datasets.shapenet import ShapeNetDataset
+    from optiqual3d.data.preprocessing import extract_patches
     from optiqual3d.models.optiqual import OptiQual3D
     from optiqual3d.training.train_anomaly import AnomalyTrainer
+    from optiqual3d.utils.checkpoint import load_checkpoint
 
     device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
 
@@ -141,6 +143,41 @@ def main(argv: list[str] | None = None) -> None:
     )
     logger.info("Training dataset: %d samples (online anomaly mode)", len(train_ds))
 
+    pc_cfg = cfg.data.point_cloud
+
+    def patch_collate(batch: list[dict]) -> dict:
+        """Convert raw point/mask tensors to patch/centroid/patch_mask tensors."""
+        import numpy as np
+
+        patches_list, centroids_list, labels_list, patch_masks_list = [], [], [], []
+        for sample in batch:
+            pts = sample["points"].numpy()
+            mask = sample["mask"].numpy()  # (N,) per-point anomaly mask
+            label = sample["label"]
+
+            # Extract patches and centroids via FPS + KNN
+            p, c = extract_patches(pts, pc_cfg.num_patches, pc_cfg.patch_size)
+
+            # Build per-patch labels by majority vote of per-point masks.
+            # Replicate the KNN assignment from extract_patches.
+            patch_mask = np.zeros(pc_cfg.num_patches, dtype=np.float32)
+            for i, centroid in enumerate(c):
+                dists = np.linalg.norm(pts - centroid, axis=1)
+                nearest = np.argsort(dists)[:pc_cfg.patch_size]
+                patch_mask[i] = float(mask[nearest].mean() >= 0.5)
+
+            patches_list.append(torch.from_numpy(p).float())
+            centroids_list.append(torch.from_numpy(c).float())
+            labels_list.append(label)
+            patch_masks_list.append(torch.from_numpy(patch_mask).float())
+
+        return {
+            "patches": torch.stack(patches_list),       # (B, G, P, 3)
+            "centroids": torch.stack(centroids_list),    # (B, G, 3)
+            "label": torch.tensor(labels_list, dtype=torch.long),  # (B,)
+            "patch_mask": torch.stack(patch_masks_list), # (B, G)
+        }
+
     sampler = DistributedSampler(train_ds, shuffle=True) if world_size > 1 else None
     loader = DataLoader(
         train_ds,
@@ -150,6 +187,7 @@ def main(argv: list[str] | None = None) -> None:
         num_workers=cfg.data.num_workers,
         pin_memory=True,
         drop_last=True,
+        collate_fn=patch_collate,
     )
 
     # ---- Model --------------------------------------------------
@@ -158,22 +196,11 @@ def main(argv: list[str] | None = None) -> None:
     ).to(device)
 
     # Load pre-trained Phase 1 weights
-    ckpt = torch.load(args.pretrained, map_location=device)
-    raw_model = model
-    if "model_state_dict" in ckpt:
-        raw_model.load_state_dict(ckpt["model_state_dict"], strict=False)
-        logger.info("Loaded pre-trained weights from %s", args.pretrained)
+    load_checkpoint(args.pretrained, model, device=device, strict=False)
+    logger.info("Loaded pre-trained weights from %s (non-strict)", args.pretrained)
 
     if world_size > 1:
         model = DDP(model, device_ids=[local_rank], find_unused_parameters=True)
-
-    # ---- Resume Phase 2 -----------------------------------------
-    if args.resume:
-        ckpt2 = torch.load(args.resume, map_location=device)
-        (model.module if world_size > 1 else model).load_state_dict(
-            ckpt2["model_state_dict"]
-        )
-        logger.info("Resumed Phase 2 from %s", args.resume)
 
     # ---- Train --------------------------------------------------
     trainer = AnomalyTrainer(
@@ -183,6 +210,28 @@ def main(argv: list[str] | None = None) -> None:
         cfg=cfg,
         device=device,
     )
+
+    # ---- Resume Phase 2 -----------------------------------------
+    if args.resume:
+        raw_model = model.module if world_size > 1 else model
+        ckpt2 = load_checkpoint(
+            args.resume,
+            raw_model,
+            optimizer=trainer.optimizer,
+            scheduler=trainer.scheduler,
+            device=device,
+            strict=True,
+        )
+        trainer.current_epoch = int(ckpt2.get("epoch", 0))
+        trainer.global_step = int(ckpt2.get("global_step", 0))
+        trainer.best_val_loss = float(ckpt2.get("best_val_loss", float("inf")))
+        logger.info(
+            "Resumed Phase 2 from %s (epoch %d, step %d)",
+            args.resume,
+            trainer.current_epoch,
+            trainer.global_step,
+        )
+
     trainer.train()
 
     if world_size > 1:

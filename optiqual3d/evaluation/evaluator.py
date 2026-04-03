@@ -149,27 +149,21 @@ class Evaluator:
         masks = batch["mask"]
         categories = batch["category"]
 
-        # Extract patches from raw point cloud
-        # TODO: This should be moved to a collate function for efficiency
         b, n, _ = points.shape
         pc_cfg = self.cfg.data.point_cloud
-        batch_patches = []
-        batch_centroids = []
 
-        for i in range(b):
-            pts_np = points[i].cpu().numpy()
-            patches_np, centroids_np = extract_patches(
-                pts_np, pc_cfg.num_patches, pc_cfg.patch_size
-            )
-            batch_patches.append(
-                torch.from_numpy(patches_np).float()
-            )
-            batch_centroids.append(
-                torch.from_numpy(centroids_np).float()
-            )
-
-        patches_tensor = torch.stack(batch_patches).to(self.device)
-        centroids_tensor = torch.stack(batch_centroids).to(self.device)
+        # Vectorised patch extraction across the batch
+        points_np = points.cpu().numpy()
+        patch_centroid_pairs = [
+            extract_patches(points_np[i], pc_cfg.num_patches, pc_cfg.patch_size)
+            for i in range(b)
+        ]
+        patches_tensor = torch.stack(
+            [torch.from_numpy(p).float() for p, _ in patch_centroid_pairs]
+        ).to(self.device)
+        centroids_tensor = torch.stack(
+            [torch.from_numpy(c).float() for _, c in patch_centroid_pairs]
+        ).to(self.device)
 
         # Model prediction
         raw_model = (

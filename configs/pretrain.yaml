@@ -31,4 +31,4 @@ training:
 
 logging:
   log_dir: outputs/pretrain
-  use_wandb: false
+  use_mlflow: false

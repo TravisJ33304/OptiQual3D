@@ -51,7 +51,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=["mvtec3d", "real3d", "both"],
+        choices=["mvtec3d", "real3d", "anomaly_shapenet", "both", "all"],
         default="both",
         help="Which benchmark dataset(s) to evaluate.",
     )
@@ -125,6 +125,7 @@ def main(argv: list[str] | None = None) -> None:
 
     from optiqual3d.data.datasets.mvtec3d import MVTec3DDataset
     from optiqual3d.data.datasets.real3d import Real3DDataset
+    from optiqual3d.data.datasets.anomaly_shapenet import AnomalyShapeNetDataset
     from optiqual3d.evaluation.evaluator import Evaluator
     from optiqual3d.models.optiqual import OptiQual3D
     from optiqual3d.utils.checkpoint import load_checkpoint
@@ -159,7 +160,7 @@ def main(argv: list[str] | None = None) -> None:
     # ----------------------------------------------------------------
     datasets_to_eval: list[tuple[str, str, Any]] = []
 
-    if args.dataset in ("mvtec3d", "both"):
+    if args.dataset in ("mvtec3d", "both", "all"):
         cats = args.categories or MVTec3DDataset.CATEGORIES
         for cat in cats:
             ds = MVTec3DDataset(
@@ -170,7 +171,7 @@ def main(argv: list[str] | None = None) -> None:
             )
             datasets_to_eval.append(("mvtec3d", cat, ds))
 
-    if args.dataset in ("real3d", "both"):
+    if args.dataset in ("real3d", "both", "all"):
         cats = args.categories or Real3DDataset.CATEGORIES
         for cat in cats:
             ds = Real3DDataset(
@@ -180,6 +181,15 @@ def main(argv: list[str] | None = None) -> None:
                 point_cloud_cfg=cfg.data.point_cloud,
             )
             datasets_to_eval.append(("real3d", cat, ds))
+
+    if args.dataset in ("anomaly_shapenet", "all"):
+        ds = AnomalyShapeNetDataset(
+            root=cfg.data.anomaly_shapenet_dir,
+            categories=args.categories,
+            split="test",
+            point_cloud_cfg=cfg.data.point_cloud,
+        )
+        datasets_to_eval.append(("anomaly_shapenet", "all", ds))
 
     if not datasets_to_eval:
         logger.error("No datasets selected for evaluation.")

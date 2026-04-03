@@ -65,4 +65,4 @@ training:
 
 logging:
   log_dir: logs
-  use_wandb: false
+  use_mlflow: false

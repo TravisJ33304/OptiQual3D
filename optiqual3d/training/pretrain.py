@@ -77,7 +77,9 @@ class PreTrainer:
         self.loss_fn = PretrainLoss()
 
         # Metrics
-        self.metric_tracker = MetricTracker()
+        self.metric_tracker = MetricTracker(
+            mlflow_enabled=(cfg.logging.use_mlflow and is_main_process()),
+        )
 
         # State
         self.current_epoch = 0
@@ -93,6 +95,23 @@ class PreTrainer:
         Iterates over epochs, calling :meth:`train_epoch` for each.
         Saves checkpoints at configured intervals.
         """
+        # Start MLflow run if enabled
+        if self.cfg.logging.use_mlflow and is_main_process():
+            import mlflow
+            mlflow.set_tracking_uri(self.cfg.logging.mlflow_tracking_uri)
+            mlflow.set_experiment(self.cfg.logging.mlflow_experiment_name)
+            mlflow.start_run(run_name="pretrain")
+            mlflow.log_params({
+                "phase": "pretrain",
+                "epochs": self.pretrain_cfg.epochs,
+                "batch_size": self.pretrain_cfg.batch_size,
+                "lr": self.pretrain_cfg.optimizer.lr,
+                "weight_decay": self.pretrain_cfg.optimizer.weight_decay,
+                "mask_ratio": self.cfg.model.encoder.mask_ratio,
+                "embed_dim": self.cfg.model.encoder.embed_dim,
+                "depth": self.cfg.model.encoder.depth,
+            })
+
         logger.info(
             "Starting pre-training for %d epochs", self.pretrain_cfg.epochs
         )
@@ -117,7 +136,10 @@ class PreTrainer:
                     lr,
                 )
 
-                # Checkpoint
+                # Always save latest so we can resume after preemption
+                self._save_checkpoint(epoch + 1, latest=True)
+
+                # Interval checkpoint
                 if (epoch + 1) % self.pretrain_cfg.checkpoint_interval == 0:
                     self._save_checkpoint(epoch + 1)
 
@@ -126,6 +148,10 @@ class PreTrainer:
         # Final checkpoint
         if is_main_process():
             self._save_checkpoint(self.pretrain_cfg.epochs, final=True)
+
+            if self.cfg.logging.use_mlflow:
+                import mlflow
+                mlflow.end_run()
 
     def train_epoch(self) -> dict[str, float]:
         """Train for a single epoch.
@@ -222,14 +248,15 @@ class PreTrainer:
             eta_min=cfg.min_lr,
         )
 
-    def _save_checkpoint(self, epoch: int, final: bool = False) -> None:
+    def _save_checkpoint(self, epoch: int, final: bool = False, latest: bool = False) -> None:
         """Save a training checkpoint.
 
         Args:
             epoch: Current epoch number.
             final: Whether this is the final checkpoint.
+            latest: Whether to overwrite the rolling ``latest.pt`` checkpoint.
         """
-        tag = "final" if final else f"epoch_{epoch:04d}"
+        tag = "latest" if latest else ("final" if final else f"epoch_{epoch:04d}")
         path = Path(self.cfg.logging.log_dir) / "checkpoints" / f"pretrain_{tag}.pt"
 
         raw_model = (
@@ -246,7 +273,7 @@ class PreTrainer:
             path=path,
             extra={
                 "global_step": self.global_step,
-                "config": self.cfg,
+                "current_epoch": self.current_epoch,
             },
         )
         logger.info("Saved checkpoint: %s", path)
